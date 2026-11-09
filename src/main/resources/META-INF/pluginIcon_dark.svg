@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40">
+  <!-- Dark-theme version of pluginIcon.svg: the same drawing in lighter colours -->
+  <g stroke-linecap="round" stroke-linejoin="round" stroke-width="2">
+    <rect x="12" y="3" width="16" height="10" rx="2.5" stroke="#6A9CF2" fill="#6A9CF2" fill-opacity=".22"/>
+    <rect x="2.5" y="27" width="15" height="10" rx="2.5" stroke="#6A9CF2" fill="#6A9CF2" fill-opacity=".22"/>
+    <rect x="22.5" y="27" width="15" height="10" rx="2.5" stroke="#6A9CF2" fill="#6A9CF2" fill-opacity=".22"/>
+    <g fill="none" stroke="#5FB57A">
+      <path d="M20 13v4M20 17c0 4-10 3.5-10 8.5M20 17c0 4 10 3.5 10 8.5"/>
+      <path d="M7.6 23L10 25.7l2.4-2.7M27.6 23L30 25.7l2.4-2.7"/>
+    </g>
+  </g>
+</svg>

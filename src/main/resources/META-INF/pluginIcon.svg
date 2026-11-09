@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40">
+  <!-- One service feeding two through queue arrows: a small top-to-bottom Chronicle Services diagram -->
+  <g stroke-linecap="round" stroke-linejoin="round" stroke-width="2">
+    <rect x="12" y="3" width="16" height="10" rx="2.5" stroke="#3574F0" fill="#3574F0" fill-opacity=".22"/>
+    <rect x="2.5" y="27" width="15" height="10" rx="2.5" stroke="#3574F0" fill="#3574F0" fill-opacity=".22"/>
+    <rect x="22.5" y="27" width="15" height="10" rx="2.5" stroke="#3574F0" fill="#3574F0" fill-opacity=".22"/>
+    <g fill="none" stroke="#3F8F58">
+      <path d="M20 13v4M20 17c0 4-10 3.5-10 8.5M20 17c0 4 10 3.5 10 8.5"/>
+      <path d="M7.6 23L10 25.7l2.4-2.7M27.6 23L30 25.7l2.4-2.7"/>
+    </g>
+  </g>
+</svg>

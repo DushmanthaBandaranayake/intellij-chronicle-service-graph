@@ -1,0 +1,29 @@
+<!-- require-restart: unloading live can leave the plugin referenced in memory, which delays or hangs uninstalling -->
+<idea-plugin require-restart="true">
+    <id>com.dush.csdiagram</id>
+    <name>Chronicle Services Diagram</name>
+    <vendor email="dushmanthab99@gmail.com">Dushmantha Bandaranayake</vendor>
+    <description><![CDATA[
+        <p>Adds a <b>Diagram</b> tab to Chronicle Services <code>services.yaml</code> files, next to the usual
+        <b>Text</b> tab. It shows the YAML beside a diagram of the services and the queues they read and write.</p>
+        <ul>
+            <li>Rename a queue in the diagram and every reference to it in the YAML is updated</li>
+            <li>Edit the YAML beside the diagram; the diagram follows as you type</li>
+            <li>Queues drawn as labelled arrows showing their roll cycle and master, top to bottom or left to right</li>
+            <li>Search, with every match highlighted</li>
+            <li>Right-click a node to show only its upstream and downstream, or only its direct connections</li>
+            <li>Click a node to find its declaration in the YAML</li>
+        </ul>
+        <p>Free to use under the MIT License. Copyright (c) 2026 Dushmantha Bandaranayake.</p>
+    ]]></description>
+
+    <depends>com.intellij.modules.platform</depends>
+    <depends>org.jetbrains.plugins.yaml</depends>
+    <!-- Since 2026.2 the embedded browser classes are in this separate plugin. Optional, because older IDEs have them in the core. -->
+    <depends optional="true" config-file="csdiagram-jcef.xml">com.intellij.modules.jcef</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <fileEditorProvider implementation="com.dush.csdiagram.DiagramEditorProvider"/>
+        <notificationGroup id="Chronicle Services Diagram" displayType="BALLOON"/>
+    </extensions>
+</idea-plugin>

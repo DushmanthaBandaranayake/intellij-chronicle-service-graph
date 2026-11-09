@@ -1,0 +1,87 @@
+!ChronicleServicesCfg {
+  queues: {
+    orders-in: {
+      path: data/orders-in,
+      sourceId: 1,
+      builder: !SingleChronicleQueueBuilder {
+        rollCycle: !RollCycles FAST_HOURLY,
+        replicateSets: [ sg1, sg2 ],
+        master: sg1
+      }
+    },
+    md-in: {
+      path: data/md-in,
+      sourceId: 2,
+      builder: !SingleChronicleQueueBuilder {
+        rollCycle: !RollCycles FAST_HOURLY,
+        replicateSets: [ sg1 ],
+        master: sg1
+      }
+    },
+    risk-out: { path: data/risk-out, sourceId: 3 },
+    trades-out: {
+      path: data/trades-out,
+      sourceId: 4,
+      builder: !SingleChronicleQueueBuilder {
+        rollCycle: !RollCycles FAST_DAILY,
+        replicateSets: [ sg1, sg2 ],
+        master: sg2
+      }
+    },
+    position-out: { path: data/position-out, sourceId: 5 },
+    pnl-out: { path: data/pnl-out, sourceId: 6 },
+    audit-out: {
+      path: data/audit-out,
+      sourceId: 7,
+      builder: !SingleChronicleQueueBuilder {
+        rollCycle: !RollCycles DAILY
+      }
+    }
+  },
+  services: {
+    orderGateway: {
+      inputs: [ ],
+      output: orders-in,
+      implClass: com.acme.gateway.OrderGatewayImpl
+    },
+    marketDataFeed: {
+      inputs: [ ],
+      output: md-in,
+      implClass: com.acme.md.MarketDataFeedImpl
+    },
+    riskSvc: {
+      inputs: [ orders-in ],
+      output: risk-out,
+      implClass: com.acme.risk.RiskSvcImpl,
+      startFromStrategy: LAST_WRITTEN
+    },
+    matchingEngine: {
+      inputs: [ risk-out, md-in ],
+      output: trades-out,
+      implClass: com.acme.matching.MatchingEngineImpl,
+      startFromStrategy: START,
+      inputsReplayStrategy: OUTPUT_REVERSE
+    },
+    positionSvc: {
+      inputs: [ trades-out ],
+      output: position-out,
+      implClass: com.acme.position.PositionSvcImpl,
+      startFromStrategy: START,
+      inputsReplayStrategy: INPUTS,
+      snapshotQueue: position-out,
+      periodicUpdateMS: 2000
+    },
+    pnlSvc: {
+      inputs: [ position-out, md-in ],
+      output: pnl-out,
+      implClass: com.acme.pnl.PnlSvcImpl,
+      inputsReplayStrategy: OUTPUT
+    },
+    auditSvc: {
+      inputs: [ orders-in, trades-out ],
+      output: audit-out,
+      implClass: com.acme.audit.AuditSvcImpl,
+      startFromStrategy: END
+    }
+  }
+}

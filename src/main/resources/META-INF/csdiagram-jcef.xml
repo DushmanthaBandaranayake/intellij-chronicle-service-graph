@@ -1,0 +1,2 @@
+<!-- Intentionally empty: the optional dependency in plugin.xml requires a config file, and there is nothing to add. -->
+<idea-plugin/>
