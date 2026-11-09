@@ -2,6 +2,8 @@
 
 An IntelliJ IDEA plugin that adds a **Diagram** tab to Chronicle Services `services.yaml` files, next to the usual **Text** tab at the bottom of the editor. The diagram shows the services and the queues they read and write, and you can edit the YAML from it.
 
+![The Diagram tab: services.yaml on the left, the services and queues drawn top to bottom on the right, with a node's right-click menu open](docs/images/diagram.png)
+
 ## Features
 
 - **YAML beside the diagram:** the Diagram tab is split, with the editable YAML on the left and the diagram on the right. Both show the same document, so a change on either side appears in the other right away. Selecting a node scrolls the YAML to its declaration. Drag the divider to resize; the position is remembered.

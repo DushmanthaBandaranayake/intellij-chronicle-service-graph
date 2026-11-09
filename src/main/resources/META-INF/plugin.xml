@@ -14,6 +14,8 @@
             <li>Right-click a node to show only its upstream and downstream, or only its direct connections</li>
             <li>Click a node to find its declaration in the YAML</li>
         </ul>
+        <p><img src="https://raw.githubusercontent.com/DushmanthaBandaranayake/intellij-chronicle-service-graph/master/docs/images/diagram.png"
+                width="700" alt="The Diagram tab: services.yaml on the left, the services and queues drawn top to bottom on the right, with a node's right-click menu open"></p>
         <p>Free to use under the MIT License. Copyright (c) 2026 Dushmantha Bandaranayake.</p>
     ]]></description>
 
