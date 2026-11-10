@@ -628,15 +628,22 @@
   /**
    * Ids to keep for a focus view, worked out on the full graph.
    * flow:   the node, everything upstream of it (what feeds it, transitively) and everything downstream (what it feeds).
-   * direct: the node, its queues (a queue: its services), and for a service also the other services on those queues.
+   * direct: one level in and one level out. A service: its input queues and the services that write them, and its
+   *         output queue and the services that read it. A queue: the services that write and read it.
    */
   function connectedIds(id, mode) {
     const root = nodes.get(id), keep = new Set([id]);
     if (mode === 'direct') {
-      const near = n => [...n.ins.map(e => e.a), ...n.outs.map(e => e.b)];
-      for (const m of near(root)) {
-        keep.add(m.id);
-        if (root.kind === 's') near(m).forEach(x => keep.add(x.id));
+      // One level each way. In: what flows into it and, for a service, who writes those queues.
+      // Out: what it flows into and, for a service, who reads that queue. Other readers of its input queues
+      // (siblings) stay out, as do other writers of its output queue.
+      for (const e of root.ins) {
+        keep.add(e.a.id);
+        if (root.kind === 's' && e.type !== 'snap') e.a.ins.forEach(w => keep.add(w.a.id));
+      }
+      for (const e of root.outs) {
+        keep.add(e.b.id);
+        if (root.kind === 's' && e.type !== 'snap') e.b.outs.filter(r => r.type !== 'snap').forEach(r => keep.add(r.b.id));
       }
       return keep;
     }
@@ -689,7 +696,7 @@
     const what = n.kind === 's' ? 'service' : 'queue';
     const items = [
       ['Show Upstream & Downstream', `Only the ${what}s and queues this ${what} depends on or feeds`, () => setFocus(n.id, 'flow')],
-      ['Show Direct Connections', n.kind === 's' ? 'Only its own queues and the services on them' : 'Only the services that read or write it',
+      ['Show Direct Connections', n.kind === 's' ? 'Only what feeds it and what it feeds, one level each way' : 'Only the services that read or write it',
         () => setFocus(n.id, 'direct')],
     ];
     if (focus) items.push(null, ['Show All', 'Every service and queue again', () => setFocus(null)]);
