@@ -457,7 +457,8 @@
   }
 
   const height = n => n.pill ? (n.b ? 44 : 30) : BASE_H + (n.kind === 'q' && n.b ? BUILDER_H : 0);
-  const width = n => n.pill ? Math.max(120, 40 + n.d.name.length * 7) : NW;
+  // A pill fits its name and, when the queue has a builder, its roll cycle and master line too
+  const width = n => n.pill ? Math.max(120, 40 + n.d.name.length * 7, n.b ? 42 + labelLine2(n.d).length * 6.4 : 0) : NW;
 
   // ---------- drawing ----------
 
@@ -628,23 +629,16 @@
   /**
    * Ids to keep for a focus view, worked out on the full graph.
    * flow:   the node, everything upstream of it (what feeds it, transitively) and everything downstream (what it feeds).
-   * direct: one level in and one level out. A service: its input queues and the services that write them, and its
-   *         output queue and the services that read it. A queue: the services that write and read it.
+   * direct: only what is directly in and out. A service: the queues it reads and the queue it writes.
+   *         A queue: the services that write it and the services that read it.
    */
   function connectedIds(id, mode) {
     const root = nodes.get(id), keep = new Set([id]);
     if (mode === 'direct') {
-      // One level each way. In: what flows into it and, for a service, who writes those queues.
-      // Out: what it flows into and, for a service, who reads that queue. Other readers of its input queues
-      // (siblings) stay out, as do other writers of its output queue.
-      for (const e of root.ins) {
-        keep.add(e.a.id);
-        if (root.kind === 's' && e.type !== 'snap') e.a.ins.forEach(w => keep.add(w.a.id));
-      }
-      for (const e of root.outs) {
-        keep.add(e.b.id);
-        if (root.kind === 's' && e.type !== 'snap') e.b.outs.filter(r => r.type !== 'snap').forEach(r => keep.add(r.b.id));
-      }
+      // Only what is directly in and out. A service: the queues it reads and the queue it writes.
+      // A queue: the services that write it and the services that read it.
+      for (const e of root.ins) keep.add(e.a.id);
+      for (const e of root.outs) keep.add(e.b.id);
       return keep;
     }
     // Upstream and downstream are walked separately, so that siblings (other readers of an upstream queue) stay out
@@ -696,7 +690,7 @@
     const what = n.kind === 's' ? 'service' : 'queue';
     const items = [
       ['Show Upstream & Downstream', `Only the ${what}s and queues this ${what} depends on or feeds`, () => setFocus(n.id, 'flow')],
-      ['Show Direct Connections', n.kind === 's' ? 'Only what feeds it and what it feeds, one level each way' : 'Only the services that read or write it',
+      ['Show Direct Connections', n.kind === 's' ? 'Only the queues it reads and the queue it writes' : 'Only the services that read or write it',
         () => setFocus(n.id, 'direct')],
     ];
     if (focus) items.push(null, ['Show All', 'Every service and queue again', () => setFocus(null)]);
