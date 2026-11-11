@@ -14,7 +14,7 @@ An IntelliJ IDEA plugin that adds a **Diagram** tab to Chronicle Services `servi
 - **Search:** type in the search box (Ctrl+F) to highlight every node whose name, properties or builder settings match. Enter jumps to the next match and Shift+Enter to the previous one. Each jump zooms in on the match and shows its YAML. Esc clears the search.
 - **Focus on part of a large diagram:** right-click a service or queue.
   - *Show Upstream & Downstream* keeps only what feeds it, all the way back, and what it feeds, all the way forward.
-  - *Show Direct Connections* goes one level each way. For a service, it keeps its input queues and the services that write them, and its output queue and the services that read it. For a queue, it keeps the services that write and read it.
+  - *Show Direct Connections* keeps only what is directly in and out. For a service, that's the queues it reads and the queue it writes. For a queue, it's the services that write and read it.
   - The toolbar shows what you're focused on. *Show All*, or Esc, brings everything back.
 - **Problems are marked:** a queue that a service uses but the `queues` section doesn't declare is drawn dashed, and so is a `master` that isn't one of the replicate sets.
 - **Jump to the YAML:** click a node to scroll the YAML to its declaration, or Ctrl+click to also move the cursor there.
