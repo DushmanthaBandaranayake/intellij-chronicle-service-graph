@@ -40,6 +40,16 @@ The tab appears for files named `service.yaml` or `services.yaml`, and for any `
 
 Block-style YAML works too. A full example is in [src/test/resources/samples/services.yaml](src/test/resources/samples/services.yaml).
 
+## How it works
+
+1. **Reading the file:** the plugin reads the YAML with IntelliJ's bundled YAML support and builds its own model of the queues, services and queue builders, keeping where each name and reference sits in the file.
+2. **Drawing:** the model is sent to a single self-contained page (plain JavaScript and SVG, with no libraries and no network access) in the IDE's embedded browser. The page lays out the diagram so that arrows cross as little as possible.
+3. **Editing:** an edit from the diagram, such as a rename, replaces exact ranges of the YAML text in the editor, as one undoable step. Comments, formatting and tags such as `!RollCycles` are kept. Typing in the YAML redraws the diagram.
+
+### No Chronicle libraries
+
+The plugin contains no Chronicle Software code and doesn't need any of its proprietary libraries, at build time or at run time. It works only with the text of the configuration file, so you don't need a Chronicle licence to use it. It doesn't run, start or connect to your services, and it works offline.
+
 ## Requirements
 
 IntelliJ IDEA 2021.3 or newer, with the bundled YAML plugin and the embedded browser (JCEF). Since 2026.2 the browser is the "Web Browser (JCEF)" plugin.
@@ -58,3 +68,5 @@ Gradle must run on JDK 21 or newer. The plugin itself is compiled to Java 11 byt
 ## License
 
 Free to use under the [MIT License](LICENSE). Copyright (c) 2026 Dushmantha Bandaranayake.
+
+This is an independent project, not affiliated with or endorsed by Chronicle Software. Chronicle is a trademark of its owner.
