@@ -58,3 +58,5 @@ Gradle must run on JDK 21 or newer. The plugin itself is compiled to Java 11 byt
 ## License
 
 Free to use under the [MIT License](LICENSE). Copyright (c) 2026 Dushmantha Bandaranayake.
+
+This is an independent project, not affiliated with or endorsed by Chronicle Software. Chronicle is a trademark of its owner.

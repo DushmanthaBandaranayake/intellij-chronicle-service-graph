@@ -16,6 +16,8 @@
         </ul>
         <p><img src="https://raw.githubusercontent.com/DushmanthaBandaranayake/intellij-chronicle-service-graph/master/docs/images/diagram.png"
                 width="700" alt="The Diagram tab: services.yaml on the left, the services and queues drawn top to bottom on the right, with a node's right-click menu open"></p>
+        <p>This is an independent plugin, not affiliated with or endorsed by Chronicle Software.
+        Chronicle is a trademark of its owner.</p>
         <p>Free to use under the MIT License. Copyright (c) 2026 Dushmantha Bandaranayake.</p>
     ]]></description>
 
