@@ -16,6 +16,12 @@
         </ul>
         <p><img src="https://raw.githubusercontent.com/DushmanthaBandaranayake/intellij-chronicle-service-graph/master/docs/images/diagram.png"
                 width="700" alt="The Diagram tab: services.yaml on the left, the services and queues drawn top to bottom on the right, with a node's right-click menu open"></p>
+        <p><b>How it works:</b> the plugin reads the YAML text with IntelliJ's bundled YAML support, builds
+        its own model of the queues and services, and draws it with plain JavaScript and SVG in the IDE's embedded
+        browser. Edits from the diagram change the YAML text in the editor, as one undoable step.</p>
+        <p><b>No Chronicle libraries:</b> the plugin contains no Chronicle Software code and needs none of its
+        proprietary libraries. It only works with the text of the configuration file. It doesn't run or connect to
+        your services, and it works offline.</p>
         <p>This is an independent plugin, not affiliated with or endorsed by Chronicle Software.
         Chronicle is a trademark of its owner.</p>
         <p>Free to use under the MIT License. Copyright (c) 2026 Dushmantha Bandaranayake.</p>
