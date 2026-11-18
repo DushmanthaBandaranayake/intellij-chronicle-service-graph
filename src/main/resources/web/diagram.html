@@ -89,6 +89,36 @@
   #menu button small { display:block; opacity:.65; font-size:11px; }
   #menu hr { border:none; border-top:1px solid var(--stroke); margin:4px 2px; }
 
+  /* Show: the checklist of services and queues the diagram draws */
+  #showbtn { gap:4px; }
+  #bar #showbtn.some { border-color:var(--accent); background:var(--hover); }
+  #hidden-count { font-size:11px; padding:0 5px; border-radius:8px; background:var(--accent); color:#fff; }
+  #hidden-count[hidden] { display:none; }
+  #showlist { position:fixed; z-index:24; width:270px; box-sizing:border-box; padding:6px; overflow:auto; background:var(--bar);
+              border:1px solid var(--stroke); border-radius:6px; box-shadow:0 4px 14px rgba(0,0,0,.25); }
+  #showlist[hidden] { display:none; }
+  .sl-top { position:sticky; top:-6px; z-index:1; margin:-6px -6px 0; padding:6px 6px 2px; background:var(--bar); }
+  .sl-findrow { display:flex; align-items:center; gap:6px; }
+  #sl-find { flex:1; min-width:0; }
+  #sl-find.none { color:var(--err); border-color:var(--err); }
+  #sl-count { opacity:.75; white-space:nowrap; font-size:11px; }
+  .sl-actions { display:flex; gap:12px; margin:6px 2px 2px; }
+  .sl-actions button { background:none; border:none; padding:0; color:var(--accent); cursor:pointer; }
+  .sl-actions button:hover { text-decoration:underline; }
+  .sl-head, .sl-item { display:flex; align-items:center; gap:6px; border-radius:4px; cursor:pointer; }
+  .sl-head { margin-top:6px; padding:3px 4px; font-weight:600; }
+  .sl-item { padding:2px 4px 2px 22px; }
+  .sl-head:hover, .sl-item:hover { background:var(--hover); }
+  .sl-head input, .sl-item input { margin:0; }
+  .sl-count, .sl-note { font-weight:normal; opacity:.65; }
+  .sl-note { margin-left:auto; font-size:11px; }
+  .sl-item.off .sl-name { opacity:.55; }
+  .sl-item .lg { margin-right:0; flex:none; }
+  .sl-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .sl-none { padding:2px 4px 2px 22px; opacity:.6; }
+  .sl-item.current { background:var(--hover); outline:1px solid var(--accent); outline-offset:-1px; }
+  .sl-name mark { background:#ffd866; color:#222; border-radius:2px; }
+
   #rename { position:fixed; z-index:20; font-weight:600; font-size:12.5px; padding:2px 5px; }
   #toast { position:fixed; left:50%; bottom:14px; transform:translateX(-50%); z-index:30; padding:6px 12px; border-radius:5px;
            background:var(--bar); border:1px solid var(--err); color:var(--fg); max-width:70%; pointer-events:none; }
@@ -108,6 +138,10 @@
         data-dir="lr" title="Left to right" aria-label="Left to right"><svg class="dir" viewBox="0 0 16 16">
         <rect x="1.5" y="4" width="4" height="8" rx="1"/><rect x="10.5" y="4" width="4" height="8" rx="1"/><path d="M5.5 8h4M8.1 6.4L9.7 8l-1.6 1.6"/></svg></button>
     </span>
+    <button id="showbtn" class="ico" title="Choose which services and queues the diagram shows" aria-haspopup="true"><svg class="dir" viewBox="0 0 16 16">
+      <path d="M1.8 4.2l1.3 1.3 2.4-2.4M1.8 10.7l1.3 1.3 2.4-2.4M8 4.3h6.2M8 10.8h6.2"/></svg><span>Show</span><span id="hidden-count" hidden></span></button>
+    <button id="export" class="ico" title="Export the diagram as an image" aria-label="Export the diagram as an image" aria-haspopup="true"><svg class="dir" viewBox="0 0 16 16">
+      <path d="M8 2v7.5M4.9 6.6L8 9.7l3.1-3.1M2.5 10.5v3h11v-3"/></svg></button>
     <button id="reset" title="Put the nodes you dragged back where the automatic layout puts them" hidden>Reset layout</button>
   </span>
   <input id="search" placeholder="Search (Enter: next, Shift+Enter: previous)" spellcheck="false" title="Matches names, properties and builder settings. Ctrl+F to focus, Esc to clear.">
@@ -137,6 +171,14 @@
 </div>
 <div id="toast" hidden></div>
 <div id="menu" hidden></div>
+<div id="showlist" hidden>
+  <div class="sl-top">
+    <div class="sl-findrow"><input id="sl-find" placeholder="Type to find" spellcheck="false" autocomplete="off"
+        title="Enter, Down or F3: next match. Shift+Enter, Up or Shift+F3: previous. Space: tick or untick. Esc: clear, then close."><span id="sl-count"></span></div>
+    <div class="sl-actions"><button id="sl-all">Show all</button><button id="sl-none">Hide all</button></div>
+  </div>
+  <div id="sl-items"></div>
+</div>
 
 <script>
   /*BRIDGE*/
@@ -155,6 +197,9 @@
   const SAVED_VIEW = /*VIEW*/null;   // the IDE fills this in from its settings
   if (SAVED_VIEW) Object.assign(view, SAVED_VIEW);
   view.style = 'arrows';   // queues are always drawn as arrows (the queues-as-nodes graph is still built to work out focus views)
+  // Ids (s:name, q:name) of the services and queues left out of the diagram. The IDE keeps them per file (the H message).
+  const SAVED_HIDDEN = /*HIDDEN*/null;
+  let hidden = new Set(SAVED_HIDDEN || []);
 
   let DATA = null, nodes = new Map(), edges = [], selected = null, pendingSelect = null;
   let matches = [], current = -1;   // search results, in column order, and the one Enter last moved to
@@ -226,14 +271,63 @@
     }
   }
 
+  /**
+   * Lays out the graph one stream at a time. A stream is a set of services and queue pills joined by arrows; unrelated
+   * streams are laid out separately and placed side by side, largest first, so they never interleave. Nothing depends on
+   * the order of the YAML: ties are broken by name.
+   */
   function layout() {
-    const all = [...nodes.values()];
+    const all = [...nodes.values()].sort(byName);
+    // Streams: connected parts of the graph (any arrow joins, whatever its direction)
+    const comp = new Map(), streams = [];
+    for (const n of all) {
+      if (comp.has(n)) continue;
+      const part = [], stack = [n];
+      comp.set(n, part);
+      while (stack.length) {
+        const m = stack.pop();
+        part.push(m);
+        for (const e of m.ins.concat(m.outs)) for (const o of [e.a, e.b]) if (!comp.has(o)) { comp.set(o, part); stack.push(o); }
+      }
+      streams.push(part.sort(byName));
+    }
+    streams.sort((a, b) => b.length - a.length || byName(a[0], b[0]));
+    let crossings = 0, offset = 0;
+    const lr = view.dir === 'lr';
+    for (const part of streams) {
+      const set = new Set(part);
+      const partEdges = edges.filter(e => set.has(e.a)).sort((x, y) => edgeKey(x).localeCompare(edgeKey(y)));
+      const items = layoutStream(part, partEdges);
+      crossings += items.crossings;
+      // Side by side across the flow: tb streams sit left to right, lr streams top to bottom
+      let lo = Infinity, hi = -Infinity;
+      for (const n of part) {
+        const tagW = Math.max(0, ...n.outs.filter(hasLabel).map(e => labelSize(e.q)[lr ? 1 : 0]));
+        const [a, size] = lr ? [n.y, n.h] : [n.x, n.w];
+        lo = Math.min(lo, a + size / 2 - Math.max(size, tagW) / 2);
+        hi = Math.max(hi, a + size / 2 + Math.max(size, tagW) / 2);
+      }
+      for (const d of items.dummies) { const c = lr ? d.p1[1] : d.p1[0]; lo = Math.min(lo, c - 30); hi = Math.max(hi, c + 30); }
+      const shift = offset - lo;
+      for (const n of part) { if (lr) n.y += shift; else n.x += shift; }
+      for (const d of items.dummies) for (const p of [d.p1, d.p2]) p[lr ? 1 : 0] += shift;
+      offset += hi - lo + (lr ? 60 : 90);
+    }
+    window.layoutCrossings = crossings;   // for checking the layout from the console
+  }
+
+  const byName = (a, b) => (a.kind + a.d.name).localeCompare(b.kind + b.d.name);
+  const edgeKey = e => e.a.kind + e.a.d.name + '>' + (e.q ? e.q.name : '') + '>' + e.b.kind + e.b.d.name + '>' + e.type;
+
+  /** Lays out one stream with its top (or left) edge at 0; returns its waypoints and arrow crossings. */
+  function layoutStream(all, edges) {
     const flow = e => e.type !== 'snap' && !e.back;
+    const outsOf = n => n.outs.filter(e => edges.includes(e)).sort((x, y) => edgeKey(x).localeCompare(edgeKey(y)));
     // Break cycles: an edge back to a node still on the DFS stack is drawn but ignored for layering
     const state = new Map();
     const dfs = n => {
       state.set(n, 1);
-      for (const e of n.outs) {
+      for (const e of outsOf(n)) {
         if (e.type === 'snap') continue;
         const s = state.get(e.b);
         if (s === 1) e.back = true; else if (!s) dfs(e.b);
@@ -243,43 +337,52 @@
     all.filter(n => !n.ins.some(e => e.type !== 'snap')).forEach(n => { if (!state.get(n)) dfs(n); });
     all.forEach(n => { if (!state.get(n)) dfs(n); });
 
-    // Longest path from the sources
-    const layer = new Map(), order = [];
+    // Longest path from the sources: each node one layer past the latest thing that feeds it
+    const layer = new Map();
     const visit = n => {
       if (layer.has(n)) return layer.get(n);
       layer.set(n, 0);
       let l = 0;
       for (const e of n.ins) if (flow(e)) l = Math.max(l, visit(e.a) + 1);
-      layer.set(n, l); order.push(n);
+      layer.set(n, l);
       return l;
     };
     all.forEach(visit);
-    // Sources sit just left of their first consumer instead of in column 0
-    for (const n of all) {
-      if (n.ins.some(flow)) continue;
-      const next = n.outs.filter(flow).map(e => layer.get(e.b));
-      if (next.length) layer.set(n, Math.max(0, Math.min(...next) - 1));
+    // Shorter arrows: move each node within the room its neighbours leave it (after what feeds it, before what it
+    // feeds) to the median of where its neighbours want it. Sources end up just before their consumers.
+    for (let round = 0; round < 6; round++) {
+      let changed = false;
+      for (const n of all) {
+        const ins = n.ins.filter(flow), outs = n.outs.filter(flow);
+        if (!ins.length && !outs.length) continue;
+        const lo = Math.max(0, ...ins.map(e => layer.get(e.a) + 1));
+        const hi = outs.length ? Math.min(...outs.map(e => layer.get(e.b) - 1)) : Infinity;
+        const wants = ins.map(e => layer.get(e.a) + 1).concat(outs.map(e => layer.get(e.b) - 1)).sort((a, b) => a - b);
+        const m = wants[(wants.length - 1) >> 1];
+        const l = Math.min(hi, Math.max(lo, m));
+        if (l !== layer.get(n) && l >= 0) { layer.set(n, l); changed = true; }
+      }
+      if (!changed) break;
     }
+    const minLayer = Math.min(...all.map(n => layer.get(n)));
+    all.forEach(n => layer.set(n, layer.get(n) - minLayer));
 
     // ---- Order within each layer so that as few arrows as possible cross (Sugiyama-style) ----
-    // An arrow that skips layers gets a waypoint in each layer it passes through. The waypoint takes part in the
-    // ordering like a node, and keeps a lane free that the arrow is then drawn along (see route).
     const L = Math.max(0, ...all.map(n => layer.get(n))) + 1;
     const layers = Array.from({ length: L }, () => []);
-    const up = new Map(), down = new Map();   // item → its neighbours in the layer above / below
+    const up = new Map(), down = new Map();
     const addItem = (it, l) => { layers[l].push(it); up.set(it, []); down.set(it, []); };
     const link = (u, v) => { if (!down.get(u).includes(v)) { down.get(u).push(v); up.get(v).push(u); } };
-    // Starting order: depth-first from the sources, so things that are connected start out near each other
+    // Starting order: depth-first from the sources, so things that are connected start out together
     const placed = new Set();
     const place = n => {
       if (placed.has(n)) return;
       placed.add(n); addItem(n, layer.get(n));
-      n.outs.filter(flow).forEach(e => place(e.b));
+      outsOf(n).filter(flow).forEach(e => place(e.b));
     };
     all.filter(n => !n.ins.some(flow)).forEach(place);
     all.forEach(place);
-    // Waypoints. Arrows that leave the same node for the same queue share them until they part.
-    const shared = new Map();
+    const dummies = [], shared = new Map();
     for (const e of edges) {
       e.via = [];
       const la = layer.get(e.a), lb = layer.get(e.b);
@@ -288,7 +391,7 @@
       for (let l = la + 1; l < lb; l++) {
         const key = e.a.id + '|' + (e.q ? e.q.name : '') + '@' + l;
         let d = shared.get(key);
-        if (!d) { d = { dummy: true }; shared.set(key, d); addItem(d, l); }
+        if (!d) { d = { dummy: true }; shared.set(key, d); addItem(d, l); dummies.push(d); }
         link(prev, d); e.via.push(d); prev = d;
       }
       link(prev, e.b);
@@ -296,7 +399,7 @@
 
     const pos = new Map();
     const index = () => layers.forEach(c => c.forEach((it, i) => pos.set(it, i)));
-    const crossingsBetween = l => {   // arrow crossings between layer l and l + 1
+    const crossingsBetween = l => {
       const segs = [];
       for (const u of layers[l]) for (const v of down.get(u)) segs.push([pos.get(u), pos.get(v)]);
       let c = 0;
@@ -310,19 +413,18 @@
       const p = list.map(m => pos.get(m)).sort((a, b) => a - b), m = p.length >> 1;
       return !p.length ? null : p.length % 2 ? p[m] : (p[m - 1] + p[m]) / 2;
     };
-    const sortLayer = (l, byAbove) => {   // by the median position of each item's neighbours on one side
+    const sortLayer = (l, byAbove) => {
       const c = layers[l], key = new Map();
       c.forEach((it, i) => { const m = median((byAbove ? up : down).get(it)); key.set(it, m === null ? i : m); });
       c.sort((a, b) => key.get(a) - key.get(b) || pos.get(a) - pos.get(b));
       c.forEach((it, i) => pos.set(it, i));
     };
-    // Crossings among u's and v's arrows (both sides) when u is placed before v
     const pairCrossings = (u, v) => {
       let c = 0;
       for (const side of [up, down]) for (const a of side.get(u)) for (const b of side.get(v)) if (pos.get(a) > pos.get(b)) c++;
       return c;
     };
-    const transpose = () => {   // swap neighbours while that removes crossings
+    const transpose = () => {
       for (let round = 0, better = true; better && round < 20; round++) {
         better = false;
         for (const c of layers) for (let i = 0; i + 1 < c.length; i++) {
@@ -331,9 +433,6 @@
         }
       }
     };
-    // The sweeps can settle in a local best, so start them from several orders and keep the overall best:
-    // the depth-first order, its mirror image, and a few fixed shuffles (seeded, so the same YAML always gives
-    // the same picture). Bigger diagrams get fewer starts, to keep the layout quick.
     const initial = layers.map(c => c.slice());
     let seed = 1;
     const shuffled = c => {
@@ -341,9 +440,9 @@
       for (let i = s.length - 1; i > 0; i--) { seed = (seed * 16807) % 2147483647; const j = seed % (i + 1); [s[i], s[j]] = [s[j], s[i]]; }
       return s;
     };
-    const items = layers.reduce((s, c) => s + c.length, 0);
+    const count = layers.reduce((s, c) => s + c.length, 0);
     const starts = [initial, initial.map(c => c.slice().reverse())];
-    for (let k = 0, extra = items > 300 ? 0 : items > 120 ? 2 : 6; k < extra; k++) starts.push(initial.map(shuffled));
+    for (let k = 0, extra = count > 600 ? 2 : count > 300 ? 8 : 30; k < extra; k++) starts.push(initial.map(shuffled));
     let best = null, bestCrossings = Infinity;
     for (const start of starts) {
       start.forEach((c, l) => { layers[l] = c.slice(); });
@@ -362,7 +461,6 @@
     }
     best.forEach((c, l) => { layers[l] = c; });
     index();
-    window.layoutCrossings = bestCrossings;   // for checking the layout from the console
 
     // ---- Positions across each layer: keep the order and spacing, and line items up with their neighbours ----
     all.forEach(n => { n.w = width(n); n.h = height(n); });
@@ -370,21 +468,21 @@
     const breadth = it => it.dummy ? 0 : lr ? it.h : it.w;
     const minDist = (a, b) => breadth(a) / 2 + breadth(b) / 2 + (a.dummy || b.dummy ? 18 : lr ? GAP_Y : 36);
     const center = new Map();
-    layers.forEach(c => {   // start packed and centred on 0
+    layers.forEach(c => {
       let p = 0;
       c.forEach((it, i) => { if (i) p += minDist(c[i - 1], it); center.set(it, p); });
-      c.forEach(it => center.set(it, center.get(it) - p / 2));
+      c.forEach(it => center.set(it, center.get(it) - p / 2));   // start packed and centred on 0
     });
     const relax = (c, side) => {
       const want = c.map(it => {
         const nb = side.get(it);
         return nb.length ? nb.reduce((s, m) => s + center.get(m), 0) / nb.length : center.get(it);
       });
-      // Pack once pushing right and once pushing left from the wanted spots, then take the average: both keep the
-      // spacing, so their average does too, and it doesn't drift to one side.
       const f = want.slice(), b = want.slice();
       for (let i = 1; i < c.length; i++) f[i] = Math.max(f[i], f[i - 1] + minDist(c[i - 1], c[i]));
       for (let i = c.length - 2; i >= 0; i--) b[i] = Math.min(b[i], b[i + 1] - minDist(c[i], c[i + 1]));
+      // Pack once pushing right and once pushing left from the wanted spots, then take the average: both keep the
+      // spacing, so their average does too, and it doesn't drift to one side.
       c.forEach((it, i) => center.set(it, (f[i] + b[i]) / 2));
     };
     for (let pass = 0; pass < 8; pass++) {
@@ -392,8 +490,7 @@
       else for (let l = L - 2; l >= 0; l--) relax(layers[l], down);
     }
 
-    // ---- Layers become columns (left to right) or rows (top to bottom) ----
-    // The gap after a layer leaves room for the queue tags that sit just past its services (see labelAt).
+    // ---- Layers become rows (top to bottom) or columns (left to right) ----
     const real = c => c.filter(it => !it.dummy);
     const tagExtent = (c, dim) => Math.max(0, ...real(c).flatMap(n => n.outs.filter(hasLabel).map(e => labelSize(e.q)[dim])));
     let at = 0;
@@ -416,6 +513,7 @@
         at += rowH + Math.max(56, tags ? LABEL_GAP + tags + 40 : 0);
       }
     });
+    return { dummies, crossings: bestCrossings };
   }
 
   /**
@@ -548,6 +646,7 @@
       ev.preventDefault(); ev.stopPropagation(); select(id);
       openMenu([['Show Upstream & Downstream', 'Only the services and queues around this queue', () => setFocus(id, 'flow')],
                 ['Show Direct Connections', 'Only the services that read or write it', () => setFocus(id, 'direct')],
+                null, ['Hide', 'Leave it out of the diagram. Show in the toolbar brings it back', () => setHidden([id], true)],
                 null, ['Show in YAML', null, () => send('G', id)]], ev.clientX, ev.clientY);
     });
   }
@@ -659,11 +758,16 @@
     return keep;
   }
 
-  /** Builds and lays out the graph for the current data, applying the focus view if there is one. */
+  /** Builds and lays out the graph for the current data, applying the focus view if there is one and leaving out hidden items. */
   function rebuild() {
     buildGraph(null);   // the full queues-and-services graph: focus is always worked out on it
-    if (focus && !nodes.has(focus.id)) focus = null;   // its node was removed or renamed in the YAML
-    const keep = focus ? connectedIds(focus.id, focus.mode) : null;
+    // Focus ends when its node was removed or renamed in the YAML, or hidden
+    if (focus && (!nodes.has(focus.id) || hidden.has(focus.id))) focus = null;
+    let keep = focus ? connectedIds(focus.id, focus.mode) : null;
+    if (hiddenCount()) {
+      if (!keep) keep = new Set(nodes.keys());
+      for (const id of hidden) keep.delete(id);
+    }
     const name = focus ? nodes.get(focus.id).d.name : '';
     if (view.style === 'arrows') buildArrowGraph(keep); else if (keep) buildGraph(keep);
     layout();
@@ -694,7 +798,11 @@
         () => setFocus(n.id, 'direct')],
     ];
     if (focus) items.push(null, ['Show All', 'Every service and queue again', () => setFocus(null)]);
-    items.push(null, ['Show in YAML', null, () => send('G', n.id)], ['Rename…', null, () => startRename(n, grp)]);
+    items.push(null, ['Hide', 'Leave it out of the diagram. Show in the toolbar brings it back', () => setHidden([n.id], true)]);
+    items.push(null, ['Show in YAML', null, () => send('G', n.id)]);
+    const impl = n.kind === 's' && prop(n, 'implClass');
+    if (impl && impl.value) items.push(['Go to Class', impl.value, () => send('J', n.id)]);
+    items.push(['Rename…', null, () => startRename(n, grp)]);
     openMenu(items, x, y);
   }
 
@@ -726,12 +834,175 @@
   $('show-all').onclick = () => setFocus(null);
 
   function renderSummary() {
-    const declared = DATA.queues.filter(q => q.declared).length, missing = DATA.queues.length - declared;
-    $('summary').textContent = `${DATA.services.length} services · ${declared} queues` + (missing ? ` · ${missing} not declared` : '');
+    const declared = DATA.queues.filter(q => q.declared), missing = DATA.queues.length - declared.length;
+    const shown = (list, kind) => list.filter(d => !hidden.has(kind + ':' + d.name)).length;
+    const of = (n, total, what) => (n < total ? `${n} of ${total}` : `${total}`) + ' ' + what;
+    $('summary').textContent = of(shown(DATA.services, 's'), DATA.services.length, 'services') + ' · '
+        + of(shown(declared, 'q'), declared.length, 'queues') + (missing ? ` · ${missing} not declared` : '');
     $('problems').hidden = !DATA.problems.length;
     $('problems').textContent = DATA.problems.join(' ');
+    const n = hiddenCount();
+    $('showbtn').classList.toggle('some', n > 0);
+    $('hidden-count').hidden = !n;
+    $('hidden-count').textContent = n + ' hidden';
     $('empty').hidden = nodes.size > 0;
+    $('empty').innerHTML = n && !nodes.size ? 'Everything is hidden.<br>Use <b>Show</b> in the toolbar to bring services and queues back.' : EMPTY;
   }
+  const EMPTY = $('empty').innerHTML;
+
+  // ---------- show and hide services and queues ----------
+
+  /** How many hidden ids are services or queues in the file (a hidden name that's gone from the YAML doesn't count). */
+  function hiddenCount() {
+    if (!DATA || !hidden.size) return 0;
+    return DATA.services.filter(s => hidden.has('s:' + s.name)).length + DATA.queues.filter(q => hidden.has('q:' + q.name)).length;
+  }
+
+  function setHidden(ids, hide) {
+    for (const id of ids) if (hide) hidden.add(id); else hidden.delete(id);
+    // Only names still in the file are saved, so the setting doesn't collect old names
+    const exists = id => (id[0] === 's' ? DATA.services : DATA.queues).some(d => d.name === id.slice(2));
+    hidden = new Set([...hidden].filter(exists));
+    send('H', ...hidden);
+    if (selected && hidden.has(selected)) selected = null;
+    rebuild(); runSearch(); render();
+    if (autoFit) fit();
+    if (!$('showlist').hidden) renderShowList();
+  }
+
+  // The checklist: one group for services and one for queues. Typing finds items the way IntelliJ's speed search does:
+  // matching letters are highlighted and the current match is selected; nothing is filtered out.
+  let listCur = null;   // id of the selected row
+  const listIds = () => DATA.services.map(s => 's:' + s.name).concat(DATA.queues.map(q => 'q:' + q.name));
+  const listQuery = () => $('sl-find').value.trim().toLowerCase();
+  /** The rows the keyboard moves through: the matches while searching, otherwise every row. */
+  function listMatches() {
+    const q = listQuery();
+    return q ? listIds().filter(id => id.slice(2).toLowerCase().includes(q)) : listIds();
+  }
+
+  /** After the search text changed: stay on the selected row if it matches, else go to the next match after it. */
+  function listFind() {
+    const q = listQuery(), m = listMatches();
+    if (q && !m.includes(listCur)) {
+      const ids = listIds(), from = Math.max(0, ids.indexOf(listCur));
+      listCur = m.find(id => ids.indexOf(id) >= from) || m[0] || listCur;
+    }
+    renderShowList(true);
+  }
+
+  function listStep(dir) {
+    const m = listMatches();
+    if (!m.length) return;
+    const i = m.indexOf(listCur);
+    listCur = i < 0 ? m[dir > 0 ? 0 : m.length - 1] : m[(i + dir + m.length) % m.length];
+    renderShowList(true);
+  }
+
+  function renderShowList(reveal) {
+    const panel = $('showlist'), box = $('sl-items'), scroll = panel.scrollTop, q = listQuery(), m = listMatches();
+    box.textContent = '';
+    const check = (on, change) => {
+      const cb = document.createElement('input');
+      cb.type = 'checkbox'; cb.checked = on; cb.tabIndex = -1; cb.onchange = () => change(cb.checked);
+      return cb;
+    };
+    for (const [kind, title, ic, list] of [['s', 'Services', 'service', DATA.services], ['q', 'Queues', 'queue', DATA.queues]]) {
+      const group = list.map(d => kind + ':' + d.name), shown = group.filter(id => !hidden.has(id)).length;
+      const head = document.createElement('label');
+      head.className = 'sl-head';
+      const all = check(group.length > 0 && shown === group.length, on => setHidden(group, !on));
+      all.indeterminate = shown > 0 && shown < group.length;
+      all.disabled = !group.length;
+      const count = document.createElement('span');
+      count.className = 'sl-count';
+      count.textContent = shown + ' / ' + group.length;
+      head.append(all, title, count);
+      box.appendChild(head);
+      if (!group.length) {
+        const none = document.createElement('div');
+        none.className = 'sl-none';
+        none.textContent = 'None in this file';
+        box.appendChild(none);
+      }
+      list.forEach((d, i) => {
+        const id = group[i], off = hidden.has(id);
+        const row = document.createElement('label');
+        row.className = 'sl-item' + (off ? ' off' : '') + (id === listCur ? ' current' : '');
+        row.title = d.name;
+        row.dataset.id = id;
+        row.addEventListener('mousedown', () => { listCur = id; });
+        const lg = document.createElementNS(NS, 'svg');
+        lg.setAttribute('class', 'lg'); lg.setAttribute('viewBox', '0 0 16 16');
+        lg.style.color = `var(--${kind === 's' ? 'svc' : 'queue'}-stroke)`;
+        lg.innerHTML = ICONS[ic];
+        const name = document.createElement('span');
+        name.className = 'sl-name';
+        const at = q ? d.name.toLowerCase().indexOf(q) : -1;
+        if (at < 0) name.textContent = d.name;
+        else {
+          const mark = document.createElement('mark');
+          mark.textContent = d.name.slice(at, at + q.length);
+          name.append(d.name.slice(0, at), mark, d.name.slice(at + q.length));
+        }
+        row.append(check(!off, on => { listCur = id; setHidden([id], !on); }), lg, name);
+        if (kind === 'q' && !d.declared) {
+          const note = document.createElement('span');
+          note.className = 'sl-note'; note.textContent = 'not declared';
+          row.appendChild(note);
+        }
+        box.appendChild(row);
+      });
+    }
+    const pos = m.indexOf(listCur);
+    $('sl-count').textContent = !q ? '' : !m.length ? 'No matches' : pos >= 0 ? `${pos + 1} of ${m.length}` : `${m.length} matches`;
+    $('sl-find').classList.toggle('none', !!q && !m.length);
+    panel.scrollTop = scroll;
+    const cur = box.querySelector('.current');
+    if (reveal && cur) {   // scroll the selected row into view, below the sticky search box
+      const top = panel.querySelector('.sl-top').offsetHeight;
+      if (cur.offsetTop - top < panel.scrollTop) panel.scrollTop = cur.offsetTop - top - 4;
+      else if (cur.offsetTop + cur.offsetHeight > panel.scrollTop + panel.clientHeight) {
+        panel.scrollTop = cur.offsetTop + cur.offsetHeight - panel.clientHeight + 4;
+      }
+    }
+  }
+
+  function openShowList() {
+    if (!DATA) return;
+    const p = $('showlist'), r = $('showbtn').getBoundingClientRect();
+    $('sl-find').value = '';
+    listCur = null;
+    renderShowList();
+    p.hidden = false;
+    p.style.left = Math.max(4, Math.min(r.left, innerWidth - p.offsetWidth - 4)) + 'px';
+    p.style.top = r.bottom + 4 + 'px';
+    p.style.maxHeight = Math.max(120, innerHeight - r.bottom - 12) + 'px';
+    $('sl-find').focus();
+  }
+  const closeShowList = () => { $('showlist').hidden = true; };
+
+  $('showbtn').onclick = () => { if ($('showlist').hidden) openShowList(); else closeShowList(); };
+  $('sl-find').addEventListener('input', listFind);
+  $('sl-all').onclick = () => setHidden(listIds(), false);
+  $('sl-none').onclick = () => setHidden(listIds(), true);
+  // Keys go to the search box, which keeps the focus while the list is open (see the mousedown handler below)
+  $('sl-find').addEventListener('keydown', e => {
+    const next = e.key === 'ArrowDown' || (e.key === 'Enter' && !e.shiftKey) || (e.key === 'F3' && !e.shiftKey);
+    const prev = e.key === 'ArrowUp' || (e.key === 'Enter' && e.shiftKey) || (e.key === 'F3' && e.shiftKey);
+    if (next || prev) { e.preventDefault(); listStep(next ? 1 : -1); return; }
+    if (e.key === ' ' && listCur) { e.preventDefault(); setHidden([listCur], !hidden.has(listCur)); }
+  });
+  $('showlist').addEventListener('keydown', e => {
+    if (e.key !== 'Escape') return;
+    e.stopPropagation();
+    if ($('sl-find').value) { $('sl-find').value = ''; listFind(); } else { closeShowList(); $('showbtn').focus(); }
+  });
+  // Clicking a row or button in the list leaves the focus in the search box, so typing keeps searching
+  $('showlist').addEventListener('mousedown', e => { if (e.target !== $('sl-find')) e.preventDefault(); });
+  window.addEventListener('mousedown', e => {
+    if (!$('showlist').contains(e.target) && !$('showbtn').contains(e.target)) closeShowList();
+  }, true);
 
   // ---------- selection ----------
 
@@ -838,13 +1109,90 @@
   };
 
   let toastTimer = 0;
-  window.showError = msg => {
-    pendingSelect = null;
-    if (focus && focus.prevId) { focus.id = focus.prevId; focus.prevId = null; }   // the rename didn't happen
+  function toast(msg) {
     const t = $('toast');
     t.textContent = msg; t.hidden = false;
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => t.hidden = true, 5000);
+  }
+  window.showError = msg => {
+    pendingSelect = null;
+    if (focus && focus.prevId) { focus.id = focus.prevId; focus.prevId = null; }   // the rename didn't happen
+    toast(msg);
+  };
+
+  // ---------- export ----------
+
+  // Large data goes to the IDE in pieces: B + kind, then C + data…, then E (see DiagramFileEditor)
+  const CHUNK = 256 * 1024;
+  function sendToIde(kind, data) {
+    window.host('B' + kind);
+    for (let i = 0; i < data.length; i += CHUNK) window.host('C' + data.slice(i, i + CHUNK));
+    window.host('E');
+  }
+
+  // Styles written into the exported SVG, so it looks the same outside this page
+  const EXPORT_STYLES = ['fill', 'stroke', 'stroke-width', 'stroke-dasharray', 'stroke-opacity', 'fill-opacity', 'opacity',
+                         'stroke-linecap', 'stroke-linejoin', 'font-family', 'font-size', 'font-weight', 'text-anchor'];
+
+  /**
+   * The whole diagram (not just the part in view) as a standalone SVG, drawn as it is now but without the selection
+   * and search highlights. Every element gets its computed style inline, since the page's CSS doesn't go with it.
+   */
+  function diagramSvg() {
+    const saved = { selected, matches, current, q: $('search').value };
+    selected = null; matches = []; current = -1; $('search').value = '';
+    render();
+    try {
+      const box = g.getBBox(), M = 24;   // in the diagram's own units: g's pan and zoom are left out
+      const W = Math.ceil(box.width + 2 * M), H = Math.ceil(box.height + 2 * M), x0 = box.x - M, y0 = box.y - M;
+      const out = svg.cloneNode(true);
+      const from = [svg, ...svg.querySelectorAll('*')], to = [out, ...out.querySelectorAll('*')];
+      from.forEach((el, i) => {
+        const cs = getComputedStyle(el);
+        to[i].setAttribute('style', EXPORT_STYLES.map(p => `${p}:${cs.getPropertyValue(p)}`).join(';'));
+        to[i].removeAttribute('class');
+        if (/var\(/.test(to[i].getAttribute('fill') || '')) to[i].removeAttribute('fill');   // the arrowheads; the style has it
+      });
+      out.removeAttribute('id');
+      out.setAttribute('xmlns', NS);
+      out.setAttribute('width', W); out.setAttribute('height', H);
+      out.setAttribute('viewBox', `${x0} ${y0} ${W} ${H}`);
+      out.querySelector('#root').removeAttribute('transform');
+      const bg = document.createElementNS(NS, 'rect');
+      for (const [k2, v] of Object.entries({ x: x0, y: y0, width: W, height: H, fill: getComputedStyle(document.body).backgroundColor })) bg.setAttribute(k2, v);
+      out.insertBefore(bg, out.querySelector('#root'));
+      return { text: '<?xml version="1.0" encoding="UTF-8"?>\n' + new XMLSerializer().serializeToString(out), W, H };
+    } finally {
+      ({ selected, matches, current } = saved);
+      $('search').value = saved.q;
+      render();
+    }
+  }
+
+  const MAX_IMAGE_SIDE = 8000;   // canvases fail silently when they get much larger
+  function exportPng(kind) {
+    const s = diagramSvg(), scale = Math.min(2, MAX_IMAGE_SIDE / Math.max(s.W, s.H));
+    const img = new Image();
+    img.onerror = () => toast('Could not create the image');
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.ceil(s.W * scale);
+      canvas.height = Math.ceil(s.H * scale);
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      sendToIde(kind, canvas.toDataURL('image/png').split(',')[1]);
+      if (scale < 1) toast('This diagram is very large, so the image was scaled down to fit');
+    };
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(s.text);
+  }
+
+  $('export').onclick = () => {
+    if (!DATA || !nodes.size) { toast('There is nothing to export'); return; }
+    const r = $('export').getBoundingClientRect();
+    openMenu([['Copy as PNG', 'To paste into a document or chat', () => exportPng('png-copy')],
+              ['Save as PNG…', null, () => exportPng('png-save')],
+              ['Save as SVG…', 'Sharp at any size; opens in browsers and drawing tools', () => sendToIde('svg-save', diagramSvg().text)]],
+             r.left, r.bottom + 4);
   };
 
   // ---------- pan & zoom ----------

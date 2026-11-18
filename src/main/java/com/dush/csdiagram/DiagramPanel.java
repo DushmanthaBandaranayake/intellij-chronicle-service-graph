@@ -35,11 +35,12 @@ final class DiagramPanel implements Disposable {
 
     /**
      * @param initialJson the first diagram, written into the page so it draws without a round trip
+     * @param hiddenJson  the ids of the services and queues hidden from this file's diagram, a JSON array
      * @param onLoaded    called on the EDT each time the page finishes loading. Calls into the page made before that are
      *                    lost, and so are messages the page sends while it loads: the browser runs in a separate
      *                    process and the bridge only connects once the page is loaded.
      */
-    DiagramPanel(@NotNull Disposable parent, @NotNull String initialJson, @NotNull Consumer<String> onMessage,
+    DiagramPanel(@NotNull Disposable parent, @NotNull String initialJson, @NotNull String hiddenJson, @NotNull Consumer<String> onMessage,
                  @NotNull Runnable onLoaded) {
         Disposer.register(parent, this);
         if (!JBCefApp.isSupported()) {
@@ -67,7 +68,8 @@ final class DiagramPanel implements Disposable {
                 .replace("/*BRIDGE*/", "window.host = function(m){ " + query.inject("m") + " };")
                 .replace("/*DARK*/false", String.valueOf(!JBColor.isBright()))
                 .replace("/*DATA*/null", initialJson)
-                .replace("/*VIEW*/null", ViewSettings.json());
+                .replace("/*VIEW*/null", ViewSettings.json())
+                .replace("/*HIDDEN*/null", hiddenJson);
         browser.loadHTML(page);
         component = browser.getComponent();
     }

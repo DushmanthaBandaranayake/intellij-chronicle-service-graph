@@ -3,6 +3,8 @@ package com.dush.csdiagram;
 import com.intellij.notification.NotificationGroupManager;
 import com.intellij.notification.NotificationType;
 import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.application.ModalityState;
+import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.util.Computable;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.editor.Editor;
@@ -26,6 +28,7 @@ import com.intellij.psi.PsiDocumentManager;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.PsiManager;
 import com.intellij.util.Alarm;
+import com.intellij.util.concurrency.AppExecutorUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -50,6 +53,10 @@ import java.util.List;
  *   <li>{@code G owner}: show the declaration in the YAML beside the diagram and focus it</li>
  *   <li>{@code S owner}: a node was selected; scroll the YAML to its declaration without taking focus</li>
  *   <li>{@code V dir style}: the layout toggles changed; remember them in {@link ViewSettings}</li>
+ *   <li>{@code H id…}: the services and queues now hidden from this file's diagram ({@code s:name}, {@code q:name});
+ *       remember them in {@link ViewSettings}</li>
+ *   <li>{@code J s:name}: open the service's {@code implClass}</li>
+ *   <li>{@code B kind}, {@code C data}…, {@code E}: an image of the diagram, sent in pieces, for {@link DiagramExport}</li>
  * </ul>
  *
  * @author Dushmantha Bandaranayake
@@ -63,6 +70,8 @@ final class DiagramFileEditor extends UserDataHolderBase implements FileEditor {
     private final @Nullable Editor yamlEditor;
     private final Alarm alarm = new Alarm(Alarm.ThreadToUse.SWING_THREAD, this);
     private boolean showing, stale = true, disposed;
+    private final StringBuilder export = new StringBuilder();
+    private String exportKind = "";
 
     DiagramFileEditor(@NotNull Project project, @NotNull VirtualFile file) {
         this.project = project;
@@ -71,7 +80,7 @@ final class DiagramFileEditor extends UserDataHolderBase implements FileEditor {
         DiagramPanel created;
         JComponent comp;
         try {
-            created = new DiagramPanel(this, currentJson(), this::receive, this::refresh);
+            created = new DiagramPanel(this, currentJson(), ViewSettings.hiddenJson(project, file), this::receive, this::refresh);
             comp = created.getComponent();
         } catch (NoClassDefFoundError missingBrowser) {
             created = null;
@@ -128,14 +137,39 @@ final class DiagramFileEditor extends UserDataHolderBase implements FileEditor {
 
     private void receive(String message) {
         if (disposed || panel == null || message.isEmpty()) return;
-        List<String> f = new ArrayList<>(Arrays.asList(message.substring(1).split("\t", -1)));
         char kind = message.charAt(0);
+        // An export comes in pieces, which may contain tabs: B starts it, C adds to it, E ends it
+        if (kind == 'B') {
+            exportKind = message.substring(1);
+            export.setLength(0);
+            return;
+        }
+        if (kind == 'C') {
+            export.append(message, 1, message.length());
+            return;
+        }
+        if (kind == 'E') {
+            String data = export.toString();
+            export.setLength(0);
+            DiagramExport.handle(project, file, exportKind, data);
+            return;
+        }
+        List<String> f = new ArrayList<>(Arrays.asList(message.substring(1).split("\t", -1)));
+        if (kind == 'J') {
+            goToClass(f.get(0));
+            return;
+        }
         if (kind == 'I') {
             refresh();
             return;
         }
         if (kind == 'V') {
             if (f.size() >= 2) ViewSettings.save(f.get(0), f.get(1));
+            return;
+        }
+        if (kind == 'H') {
+            f.removeIf(String::isEmpty);
+            ViewSettings.saveHidden(project, file, f);
             return;
         }
         if (kind == 'G' || kind == 'S') {
@@ -176,6 +210,31 @@ final class DiagramFileEditor extends UserDataHolderBase implements FileEditor {
                     .createNotification(error, NotificationType.WARNING).notify(project);
         }
         refresh();
+    }
+
+    /**
+     * Opens a service's {@code implClass}. The class is looked up in the background, because that reads the indexes,
+     * which mustn't happen on the UI thread, and only once indexing has finished.
+     */
+    private void goToClass(String owner) {
+        PsiFile psi = PsiManager.getInstance(project).findFile(file);
+        if (psi == null || panel == null || !owner.startsWith("s:")) return;
+        PsiDocumentManager.getInstance(project).commitAllDocuments();
+        ServicesModel.Service service = ServicesModelBuilder.build(psi).services.get(owner.substring(2));
+        ServicesModel.Prop impl = service == null ? null : ServicesModel.find(service.props, ImplClassReferenceContributor.IMPL_CLASS);
+        if (impl == null || impl.value.trim().isEmpty()) {
+            panel.showError("This service has no implClass.");
+            return;
+        }
+        String className = impl.value.trim();
+        ReadAction.nonBlocking(() -> ClassFinder.find(project, className))
+                .inSmartMode(project)
+                .expireWith(this)
+                .finishOnUiThread(ModalityState.defaultModalityState(), found -> {
+                    if (found.isEmpty()) panel.showError(className + " isn't in this project or its libraries.");
+                    else found.get(0).navigate(true);
+                })
+                .submit(AppExecutorUtil.getAppExecutorService());
     }
 
     /**
