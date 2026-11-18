@@ -35,5 +35,7 @@
     <extensions defaultExtensionNs="com.intellij">
         <fileEditorProvider implementation="com.dush.csdiagram.DiagramEditorProvider"/>
         <notificationGroup id="Chronicle Services Diagram" displayType="BALLOON"/>
+        <!-- Ctrl+click on a service's implClass opens the class -->
+        <psi.referenceContributor language="yaml" implementation="com.dush.csdiagram.ImplClassReferenceContributor"/>
     </extensions>
 </idea-plugin>
